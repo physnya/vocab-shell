@@ -155,6 +155,20 @@ class CliOutputShapeTests(unittest.TestCase):
         self.assertEqual(len(shell.search_history), 10)
         self.assertEqual(shell.search_history[0], "word-11")
 
+    @unittest.skipUnless(HAS_PROMPT_TOOLKIT, "prompt_toolkit is required for picker tests")
+    def test_choose_dictionary_with_arrows_uses_prompt_completion_result(self) -> None:
+        shell = VocabShell()
+
+        class DummyPromptSession:
+            @staticmethod
+            def prompt(*args, **kwargs) -> str:
+                return "toefl-core"
+
+        dictionaries = [{"name": "toefl-core"}, {"name": "daily"}]
+        shell.prompt_session = DummyPromptSession()
+        selected = shell._choose_dictionary_with_arrows(dictionaries)
+        self.assertEqual(selected, "toefl-core")
+
 
 if __name__ == "__main__":
     unittest.main()

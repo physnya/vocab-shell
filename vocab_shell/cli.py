@@ -16,7 +16,7 @@ from vocab_shell.storage import Storage, StorageError
 try:
     from prompt_toolkit import PromptSession
     from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
-    from prompt_toolkit.completion import Completer, Completion
+    from prompt_toolkit.completion import Completer, Completion, WordCompleter
     from prompt_toolkit.document import Document
     from prompt_toolkit.history import FileHistory
     from prompt_toolkit.shortcuts import CompleteStyle
@@ -454,12 +454,13 @@ class VocabShell:
             print()
             return
 
-        print("Available dictionaries:")
-        for idx, item in enumerate(dictionaries, start=1):
-            print(f"  {idx}. {item['name']}")
-
-        choice = input("Choose a dictionary by number or name: ").strip()
-        target = self._resolve_dictionary_choice(choice, dictionaries)
+        target = self._choose_dictionary_with_arrows(dictionaries)
+        if target is None:
+            print("Available dictionaries:")
+            for idx, item in enumerate(dictionaries, start=1):
+                print(f"  {idx}. {item['name']}")
+            choice = input("Choose a dictionary by number or name: ").strip()
+            target = self._resolve_dictionary_choice(choice, dictionaries)
         saved = SavedWord(
             word=entry.word,
             added_at=datetime.now(UTC).isoformat(),
@@ -472,6 +473,20 @@ class VocabShell:
         )
         self.storage.add_word(target, saved)
         print(f"Saved '{entry.word}' to '{target}'.\n")
+
+    def _choose_dictionary_with_arrows(self, dictionaries: list[dict]) -> str | None:
+        if not HAS_PROMPT_TOOLKIT or self.prompt_session is None:
+            return None
+        names = [item["name"] for item in dictionaries]
+        completer = WordCompleter(names, ignore_case=False, sentence=True)
+        choice = self.prompt_session.prompt(
+            "Choose a dictionary (Tab + arrows): ",
+            completer=completer,
+            complete_while_typing=False,
+        ).strip()
+        if not choice:
+            return None
+        return self._resolve_dictionary_choice(choice, dictionaries)
 
     @staticmethod
     def _resolve_dictionary_choice(choice: str, dictionaries: list[dict]) -> str:
