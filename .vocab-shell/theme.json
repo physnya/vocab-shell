@@ -1,0 +1,37 @@
+{
+  "active_profile": "auto",
+  "profiles": {
+    "dark": {
+      "highlight": {
+        "fg": "#ff5fd7",
+        "bold": true,
+        "underline": true
+      },
+      "meaning": {
+        "fg": "#66ffff",
+        "bold": true
+      },
+      "pos": {
+        "fg": "#101010",
+        "bg": "#ffe082",
+        "bold": true
+      }
+    },
+    "light": {
+      "highlight": {
+        "fg": "#8a005c",
+        "bold": true,
+        "underline": true
+      },
+      "meaning": {
+        "fg": "#005a9c",
+        "bold": true
+      },
+      "pos": {
+        "fg": "#000000",
+        "bg": "#ffd54f",
+        "bold": true
+      }
+    }
+  }
+}
