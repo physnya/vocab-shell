@@ -7,7 +7,14 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from vocab_shell.cli import VocabShell
+from vocab_shell.cli import VocabCompleter, VocabShell
+
+try:
+    from prompt_toolkit.document import Document
+
+    HAS_PROMPT_TOOLKIT = True
+except ImportError:
+    HAS_PROMPT_TOOLKIT = False
 
 
 class CliOutputShapeTests(unittest.TestCase):
@@ -91,6 +98,62 @@ class CliOutputShapeTests(unittest.TestCase):
         self.assertEqual(shell.theme["highlight_start"], "\033[1;38;2;255;0;0m")
         self.assertEqual(shell.theme["meaning_start"], "\033[1;38;2;255;255;255m")
         self.assertEqual(shell.theme["pos_start"], "\033[1;38;2;0;0;0;48;2;255;255;255m")
+
+    @unittest.skipUnless(HAS_PROMPT_TOOLKIT, "prompt_toolkit is required for completion tests")
+    def test_completer_suggests_matching_commands(self) -> None:
+        shell = VocabShell()
+        completer = VocabCompleter(shell)
+        completions = list(completer.get_completions(Document("s"), None))
+        texts = [item.text for item in completions]
+        self.assertIn("search", texts)
+        self.assertIn("stats", texts)
+
+    @unittest.skipUnless(HAS_PROMPT_TOOLKIT, "prompt_toolkit is required for completion tests")
+    def test_completer_suggests_recent_search_history(self) -> None:
+        shell = VocabShell()
+        shell.search_history = ["abandon", "ability", "zebra"]
+        completer = VocabCompleter(shell)
+        completions = list(completer.get_completions(Document("search a"), None))
+        texts = [item.text for item in completions]
+        self.assertEqual(texts, ["abandon", "ability"])
+
+    @unittest.skipUnless(HAS_PROMPT_TOOLKIT, "prompt_toolkit is required for completion tests")
+    def test_completer_suggests_dict_subcommands(self) -> None:
+        shell = VocabShell()
+        completer = VocabCompleter(shell)
+        completions = list(completer.get_completions(Document("dict "), None))
+        texts = [item.text for item in completions]
+        self.assertEqual(texts, ["create", "list"])
+
+    @unittest.skipUnless(HAS_PROMPT_TOOLKIT, "prompt_toolkit is required for completion tests")
+    def test_completer_suggests_dictionary_for_stats_and_review(self) -> None:
+        shell = VocabShell()
+        shell.storage.create_dictionary("toefl-core")
+        shell.storage.create_dictionary("daily")
+        completer = VocabCompleter(shell)
+
+        stats_completions = list(completer.get_completions(Document("stats t"), None))
+        stats_texts = [item.text for item in stats_completions]
+        self.assertEqual(stats_texts, ["toefl-core"])
+
+        review_completions = list(completer.get_completions(Document("review d"), None))
+        review_texts = [item.text for item in review_completions]
+        self.assertEqual(review_texts, ["daily"])
+
+    @unittest.skipUnless(HAS_PROMPT_TOOLKIT, "prompt_toolkit is required for completion tests")
+    def test_completer_suggests_review_count(self) -> None:
+        shell = VocabShell()
+        completer = VocabCompleter(shell)
+        completions = list(completer.get_completions(Document("review deck 1"), None))
+        texts = [item.text for item in completions]
+        self.assertEqual(texts, ["10"])
+
+    def test_completer_limits_search_history_to_ten_entries(self) -> None:
+        shell = VocabShell()
+        for idx in range(12):
+            shell._remember_search(f"word-{idx}")
+        self.assertEqual(len(shell.search_history), 10)
+        self.assertEqual(shell.search_history[0], "word-11")
 
 
 if __name__ == "__main__":

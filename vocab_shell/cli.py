@@ -6,11 +6,103 @@ import re
 import shlex
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from vocab_shell.collins import CollinsClient, CollinsError
 from vocab_shell.models import ReviewState, SavedWord
 from vocab_shell.review import ReviewError, ReviewManager
 from vocab_shell.storage import Storage, StorageError
+
+try:
+    from prompt_toolkit import PromptSession
+    from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
+    from prompt_toolkit.completion import Completer, Completion
+    from prompt_toolkit.document import Document
+    from prompt_toolkit.history import FileHistory
+    from prompt_toolkit.shortcuts import CompleteStyle
+
+    HAS_PROMPT_TOOLKIT = True
+except ImportError:
+    HAS_PROMPT_TOOLKIT = False
+    Completer = object
+    if TYPE_CHECKING:
+        from prompt_toolkit.completion import Completion
+        from prompt_toolkit.document import Document
+
+
+class VocabCompleter(Completer):
+    COMMANDS = ("search", "stats", "review", "dict", "help", "quit", "exit")
+    REVIEW_COUNTS = ("5", "10", "20", "30", "50")
+
+    def __init__(self, shell: "VocabShell") -> None:
+        self.shell = shell
+
+    def get_completions(self, document: "Document", complete_event):
+        text = document.text_before_cursor
+        stripped = text.lstrip()
+
+        if not stripped:
+            for command in self.COMMANDS:
+                yield Completion(command, start_position=0)
+            return
+
+        parts = stripped.split()
+        cursor_at_new_token = text.endswith(" ")
+        current = "" if cursor_at_new_token else parts[-1]
+        if cursor_at_new_token:
+            parts.append("")
+
+        if len(parts) == 1:
+            for command in self._filter_commands(current):
+                yield Completion(command, start_position=-len(current))
+            return
+
+        command = parts[0]
+        if command == "search":
+            prefix = stripped[len("search") :].lstrip()
+            for term in self._filter_search_history(prefix):
+                yield Completion(term, start_position=-len(prefix), display_meta="history")
+            return
+
+        if command == "dict":
+            if len(parts) == 2:
+                for option in ("create", "list"):
+                    if option.startswith(current):
+                        yield Completion(option, start_position=-len(current), display_meta="subcommand")
+            return
+
+        if command == "stats":
+            if len(parts) == 2:
+                for name in self._filter_dictionary_names(current):
+                    yield Completion(name, start_position=-len(current), display_meta="dictionary")
+            return
+
+        if command == "review":
+            if len(parts) == 2:
+                for name in self._filter_dictionary_names(current):
+                    yield Completion(name, start_position=-len(current), display_meta="dictionary")
+                return
+            if len(parts) == 3:
+                for count in self._filter_review_counts(current):
+                    yield Completion(count, start_position=-len(current), display_meta="count")
+            return
+
+    def _filter_commands(self, prefix: str) -> list[str]:
+        return [command for command in self.COMMANDS if command.startswith(prefix)]
+
+    def _filter_search_history(self, prefix: str) -> list[str]:
+        prefix_lower = prefix.lower()
+        return [term for term in self.shell.search_history if term.lower().startswith(prefix_lower)]
+
+    def _filter_dictionary_names(self, prefix: str) -> list[str]:
+        return [
+            name
+            for name in self.shell.list_dictionary_names_for_completion()
+            if name.startswith(prefix)
+        ]
+
+    def _filter_review_counts(self, prefix: str) -> list[str]:
+        return [value for value in self.REVIEW_COUNTS if value.startswith(prefix)]
 
 
 class VocabShell:
@@ -45,15 +137,18 @@ class VocabShell:
             home = Path.cwd() / ".vocab-shell"
         self.storage = Storage(home)
         self.theme_path = self.storage.home / "theme.json"
+        self.search_history_path = self.storage.home / "search_history.json"
         self.theme = self._load_color_theme(self.theme_path)
         self.review_manager = ReviewManager(self.storage)
+        self.search_history = self._load_search_history()
+        self.prompt_session = self._create_prompt_session()
 
     def run(self) -> int:
         print("Vocab Shell")
         print("Type 'help' for commands.\n")
         while True:
             try:
-                raw = input("vocab> ").strip()
+                raw = self._prompt("vocab> ").strip()
             except EOFError:
                 print()
                 return 0
@@ -110,6 +205,7 @@ class VocabShell:
         client = CollinsClient()
         entry = client.search(word)
         query = word.strip()
+        self._remember_search(query)
         print(f"Word: {self._highlight_exact_word(query, query)}")
         print(f"Dictionary: {entry.dictionary_code}")
         grouped_examples = entry.meaning_examples
@@ -294,6 +390,59 @@ class VocabShell:
             groups[idx % len(definitions)].append(examples[idx])
         return groups
 
+    def _create_prompt_session(self):
+        if not HAS_PROMPT_TOOLKIT:
+            return None
+        history_path = self.storage.home / ".shell_history"
+        return PromptSession(
+            history=FileHistory(str(history_path)),
+            completer=VocabCompleter(self),
+            auto_suggest=AutoSuggestFromHistory(),
+            complete_while_typing=False,
+            complete_style=CompleteStyle.COLUMN,
+        )
+
+    def _prompt(self, message: str) -> str:
+        if self.prompt_session is None:
+            return input(message)
+        return self.prompt_session.prompt(message)
+
+    def _load_search_history(self) -> list[str]:
+        if not self.search_history_path.exists():
+            return []
+        try:
+            payload = json.loads(self.search_history_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return []
+        if not isinstance(payload, list):
+            return []
+        terms = [item for item in payload if isinstance(item, str) and item.strip()]
+        return terms[:10]
+
+    def _save_search_history(self) -> None:
+        try:
+            self.search_history_path.write_text(
+                json.dumps(self.search_history, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
+
+    def _remember_search(self, word: str) -> None:
+        term = word.strip()
+        if not term:
+            return
+        self.search_history = [item for item in self.search_history if item != term]
+        self.search_history.insert(0, term)
+        self.search_history = self.search_history[:10]
+        self._save_search_history()
+
+    def list_dictionary_names_for_completion(self) -> list[str]:
+        try:
+            return [item["name"] for item in self.storage.list_dictionaries()]
+        except StorageError:
+            return []
+
     def offer_to_save(self, entry) -> None:
         dictionaries = self.storage.list_dictionaries()
         if not dictionaries:
@@ -373,11 +522,6 @@ class VocabShell:
         print(f"Dictionary: {normalized}")
         print(f"Words: {len(words)}")
         print(f"Due now: {due}")
-        upcoming = sorted(words, key=lambda item: item.review.next_review_at)[:5]
-        if upcoming:
-            print("Next reviews:")
-            for word in upcoming:
-                print(f"  {word.word}: {word.review.next_review_at} (stage {word.review.stage_index})")
         print()
 
     @staticmethod

@@ -1,4 +1,10 @@
 .tmp-data/
 .vocab-shell/dictionaries/
+.vocab-shell/.shell_history
+.vocab-shell/search_history.json
 __pycache__/
 *.pyc
+bin/
+include/
+lib/
+pyvenv.cfg
