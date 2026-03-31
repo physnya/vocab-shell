@@ -57,6 +57,44 @@ class CliOutputShapeTests(unittest.TestCase):
         line = shell._format_example_line("[VERB] He abandoned the car.", "abandon")
         self.assertIn(f"{shell.theme['pos_start']}[VERB]{shell.theme['color_end']}", line)
 
+    def test_render_box_outputs_unicode_panel(self) -> None:
+        lines = VocabShell._render_box("Warning", ["Example line"], indent="")
+        self.assertTrue(lines[0].startswith("╭Warning"))
+        self.assertTrue(lines[-1].startswith("╰"))
+        self.assertIn("Example line", "\n".join(lines))
+
+    def test_render_box_is_compact_for_short_line(self) -> None:
+        lines = VocabShell._render_box("Example 1.1", ["[NOUN] short line"], indent="     ")
+        self.assertLessEqual(len(lines[0]), 50)
+
+    def test_render_box_top_and_bottom_are_aligned(self) -> None:
+        lines = VocabShell._render_box(
+            "Example 16.1",
+            ["[VERB] Credit the point guard with another assist."],
+            indent="     ",
+        )
+        widths = [len(VocabShell._strip_ansi(line)) for line in lines]
+        self.assertTrue(all(width == widths[0] for width in widths))
+
+    def test_render_box_keeps_ansi_highlight_and_pos_styles(self) -> None:
+        shell = VocabShell()
+        formatted = shell._format_example_line("[VERB] Credit sister with another assist.", "sister")
+        lines = VocabShell._render_box("Example 1.1", [formatted], indent="     ")
+        joined = "\n".join(lines)
+        self.assertIn(shell.theme["pos_start"], joined)
+        self.assertIn(shell.theme["highlight_start"], joined)
+
+    def test_prepare_example_lines_wraps_long_sentence(self) -> None:
+        shell = VocabShell()
+        wrapped = shell._prepare_example_lines_for_box(
+            "[NOUN] There had been words between him and the secretary about the outcome of the meeting.",
+            "words",
+            content_width=42,
+        )
+        self.assertGreater(len(wrapped), 1)
+        self.assertTrue(wrapped[0].startswith(shell.theme["pos_start"]))
+        self.assertIn(shell.theme["highlight_start"], "\n".join(wrapped))
+
     def test_creates_default_theme_file(self) -> None:
         shell = VocabShell()
         theme_path = self.home / "theme.json"
