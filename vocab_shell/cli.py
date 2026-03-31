@@ -4,6 +4,8 @@ import json
 import os
 import re
 import shlex
+import shutil
+import textwrap
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -214,10 +216,17 @@ class VocabShell:
         for idx, definition in enumerate(entry.definitions, start=1):
             print(f"  {idx}. {self._colorize_meaning(definition)}")
             if grouped_examples[idx - 1]:
-                print("     Examples:")
                 for ex_idx, example in enumerate(grouped_examples[idx - 1], start=1):
-                    formatted = self._format_example_line(example, query)
-                    print(f"       {ex_idx}) {formatted}")
+                    max_content_width = self._get_box_max_content_width(indent="     ")
+                    formatted = self._prepare_example_lines_for_box(example, query, max_content_width)
+                    box = self._render_box(
+                        title=f"Example {idx}.{ex_idx}",
+                        lines=formatted,
+                        indent="     ",
+                        max_width=max_content_width,
+                    )
+                    for line in box:
+                        print(line)
         print()
         self.offer_to_save(entry)
 
@@ -241,6 +250,72 @@ class VocabShell:
             body = self._highlight_exact_word(body, query)
             return f"{self.theme['pos_start']}{pos}{self.theme['color_end']} {body}".rstrip()
         return self._highlight_exact_word(text, query)
+
+    @classmethod
+    def _render_box(
+        cls, title: str, lines: list[str], indent: str = "", min_width: int = 32, max_width: int | None = None
+    ) -> list[str]:
+        visible_width = max((cls._visible_len(line) for line in lines), default=0)
+        content_width = max(visible_width + 4, min_width)
+        if max_width is not None:
+            content_width = min(content_width, max_width)
+        title_text = f"{title}"
+        title_len = cls._visible_len(title_text)
+        bar_len = max(content_width - title_len, 0)
+        top = f"{indent}╭{title_text}{'─' * bar_len}╮"
+        body: list[str] = [f"{indent}│{' ' * content_width}│"]
+        for line in lines:
+            pad = content_width - cls._visible_len(line) - 2
+            body.append(f"{indent}│  {line}{' ' * max(pad, 0)}│")
+        body.append(f"{indent}│{' ' * content_width}│")
+        bottom = f"{indent}╰{'─' * content_width}╯"
+        return [top, *body, bottom]
+
+    @staticmethod
+    def _get_box_max_content_width(indent: str, min_width: int = 32) -> int:
+        term_width = shutil.get_terminal_size(fallback=(100, 20)).columns
+        return max(term_width - len(indent) - 2, min_width)
+
+    def _prepare_example_lines_for_box(self, text: str, query: str, content_width: int) -> list[str]:
+        line_limit = max(content_width - 2, 16)
+        match = re.match(r"^(\[[^\]]+\])\s*(.*)$", text.strip())
+        if match:
+            pos, body = match.groups()
+            first_chunk_width = max(line_limit - len(pos) - 1, 12)
+            chunks = textwrap.wrap(
+                body,
+                width=first_chunk_width,
+                break_long_words=False,
+                break_on_hyphens=False,
+            ) or [body]
+            first = self._highlight_exact_word(chunks[0], query)
+            pos_colored = f"{self.theme['pos_start']}{pos}{self.theme['color_end']}"
+            lines = [f"{pos_colored} {first}".rstrip()]
+            if len(chunks) > 1:
+                follow = textwrap.wrap(
+                    " ".join(chunks[1:]),
+                    width=line_limit,
+                    break_long_words=False,
+                    break_on_hyphens=False,
+                )
+                lines.extend(self._highlight_exact_word(chunk, query) for chunk in follow)
+            return lines
+
+        chunks = textwrap.wrap(
+            text,
+            width=line_limit,
+            break_long_words=False,
+            break_on_hyphens=False,
+        ) or [text]
+        return [self._highlight_exact_word(chunk, query) for chunk in chunks]
+
+    @staticmethod
+    def _strip_ansi(text: str) -> str:
+        return re.sub(r"\x1b\[[0-9;]*m", "", text)
+
+    @classmethod
+    def _visible_len(cls, text: str) -> int:
+        return len(cls._strip_ansi(text))
 
     @classmethod
     def _load_color_theme(cls, path: Path) -> dict[str, str]:
@@ -367,7 +442,11 @@ class VocabShell:
             if not match:
                 return None
             hex_code = match.group(1)
-            return tuple(int(hex_code[idx : idx + 2], 16) for idx in (0, 2, 4))
+            return (
+                int(hex_code[0:2], 16),
+                int(hex_code[2:4], 16),
+                int(hex_code[4:6], 16),
+            )
         if isinstance(value, list) and len(value) == 3 and all(isinstance(item, int) for item in value):
             r, g, b = value
             if 0 <= r <= 255 and 0 <= g <= 255 and 0 <= b <= 255:
