@@ -15,6 +15,17 @@
         "fg": "#101010",
         "bg": "#ffe082",
         "bold": true
+      },
+      "prompt_border": {
+        "fg": "#94a3b8"
+      },
+      "prompt_marker": {
+        "fg": "#38bdf8",
+        "bold": true
+      },
+      "prompt_transient": {
+        "fg": "#22c55e",
+        "bold": true
       }
     },
     "light": {
@@ -30,6 +41,17 @@
       "pos": {
         "fg": "#000000",
         "bg": "#ffd54f",
+        "bold": true
+      },
+      "prompt_border": {
+        "fg": "#64748b"
+      },
+      "prompt_marker": {
+        "fg": "#0284c7",
+        "bold": true
+      },
+      "prompt_transient": {
+        "fg": "#15803d",
         "bold": true
       }
     }

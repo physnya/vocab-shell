@@ -5,6 +5,7 @@ import os
 import re
 import shlex
 import shutil
+import sys
 import textwrap
 from datetime import UTC, datetime
 from pathlib import Path
@@ -113,6 +114,9 @@ class VocabShell:
         "highlight_end": "\033[0m",
         "meaning_start": "\033[1;96m",
         "pos_start": "\033[1;7m",
+        "prompt_border_start": "\033[38;2;148;163;184m",
+        "prompt_marker_start": "\033[1;38;2;56;189;248m",
+        "prompt_transient_start": "\033[1;38;2;34;197;94m",
         "color_end": "\033[0m",
     }
     DEFAULT_THEME_CONFIG = {
@@ -122,11 +126,17 @@ class VocabShell:
                 "highlight": {"fg": "#ff5fd7", "bold": True, "underline": True},
                 "meaning": {"fg": "#66ffff", "bold": True},
                 "pos": {"fg": "#101010", "bg": "#ffe082", "bold": True},
+                "prompt_border": {"fg": "#94a3b8"},
+                "prompt_marker": {"fg": "#38bdf8", "bold": True},
+                "prompt_transient": {"fg": "#22c55e", "bold": True},
             },
             "light": {
                 "highlight": {"fg": "#8a005c", "bold": True, "underline": True},
                 "meaning": {"fg": "#005a9c", "bold": True},
                 "pos": {"fg": "#000000", "bg": "#ffd54f", "bold": True},
+                "prompt_border": {"fg": "#64748b"},
+                "prompt_marker": {"fg": "#0284c7", "bold": True},
+                "prompt_transient": {"fg": "#15803d", "bold": True},
             },
         },
     }
@@ -150,13 +160,16 @@ class VocabShell:
         print("Type 'help' for commands.\n")
         while True:
             try:
-                raw = self._prompt("vocab> ").strip()
+                raw_input = self._prompt(self._build_shell_prompt())
             except EOFError:
                 print()
                 return 0
             except KeyboardInterrupt:
                 print()
                 continue
+
+            raw = raw_input.strip()
+            self._render_transient_prompt(raw)
 
             if not raw:
                 continue
@@ -172,6 +185,48 @@ class VocabShell:
 
             if should_exit:
                 return 0
+
+    def _build_shell_prompt(self) -> str:
+        if not (sys.stdin.isatty() and sys.stdout.isatty()):
+            return "vocab> "
+        width = max(shutil.get_terminal_size(fallback=(100, 20)).columns, 40)
+        title = " vocab-shell "
+        top_fill = max(width - 3 - len(title), 0)
+        top_line = f"╭─{title}{'─' * top_fill}╮"
+
+        left_border = "╰─"
+        marker = "❯ "
+        bottom_suffix = "─╯"
+        bottom_fill = max(width - len(left_border) - len(marker) - len(bottom_suffix), 8)
+
+        border_color = self.theme["prompt_border_start"]
+        marker_color = self.theme["prompt_marker_start"]
+        color_end = self.theme["color_end"]
+        bottom_prefix_colored = f"{border_color}{left_border}{color_end}{marker_color}{marker}{color_end}"
+        top_line_colored = f"{border_color}{top_line}{color_end}"
+        bottom_line_colored = (
+            f"{border_color}{left_border}{color_end}"
+            f"{marker_color}{marker}{color_end}"
+            f"{border_color}{' ' * bottom_fill}{bottom_suffix}{color_end}"
+        )
+
+        # Draw a full bordered line, then move to the start of that line for typing.
+        return f"{top_line_colored}\n{bottom_line_colored}\r{bottom_prefix_colored}"
+
+    def _render_transient_prompt(self, command: str) -> None:
+        if not (sys.stdin.isatty() and sys.stdout.isatty()):
+            return
+        border_color = self.theme["prompt_border_start"]
+        transient_color = self.theme["prompt_transient_start"]
+        color_end = self.theme["color_end"]
+        prefix = f"{border_color}──{color_end}{transient_color}❯{color_end}"
+        concise = prefix if not command else f"{prefix} {command}"
+        # Replace previous two-line prompt with a concise single-line prompt.
+        sys.stdout.write("\x1b[2A")
+        sys.stdout.write("\r\x1b[2K")
+        sys.stdout.write(concise + "\n")
+        sys.stdout.write("\r\x1b[2K\r")
+        sys.stdout.flush()
 
     def handle_command(self, raw: str) -> bool:
         parts = shlex.split(raw)
@@ -371,7 +426,7 @@ class VocabShell:
             raw_profile = profiles.get(profile_name)
             if not isinstance(raw_profile, dict):
                 continue
-            for key in ("highlight", "meaning", "pos"):
+            for key in ("highlight", "meaning", "pos", "prompt_border", "prompt_marker", "prompt_transient"):
                 raw_style = raw_profile.get(key)
                 if isinstance(raw_style, (dict, str)):
                     config["profiles"][profile_name][key] = raw_style
@@ -390,12 +445,21 @@ class VocabShell:
         highlight = cls._style_to_escape(profile.get("highlight"))
         meaning = cls._style_to_escape(profile.get("meaning"))
         pos = cls._style_to_escape(profile.get("pos"))
+        prompt_border = cls._style_to_escape(profile.get("prompt_border"))
+        prompt_marker = cls._style_to_escape(profile.get("prompt_marker"))
+        prompt_transient = cls._style_to_escape(profile.get("prompt_transient"))
         if highlight:
             theme["highlight_start"] = highlight
         if meaning:
             theme["meaning_start"] = meaning
         if pos:
             theme["pos_start"] = pos
+        if prompt_border:
+            theme["prompt_border_start"] = prompt_border
+        if prompt_marker:
+            theme["prompt_marker_start"] = prompt_marker
+        if prompt_transient:
+            theme["prompt_transient_start"] = prompt_transient
         return theme
 
     @staticmethod

@@ -16,6 +16,7 @@ Terminal vocabulary trainer for TOEFL preparation.
 ## Requirements
 
 - Python 3.11+
+- A terminal font with Unicode symbol support is recommended for prompt glyphs (for example `❯`). If your font cannot render them, prompt symbols may look incorrect.
 
 Optional environment variables:
 
@@ -68,6 +69,9 @@ Default `theme.json` structure:
 - `profiles.dark.highlight` / `profiles.light.highlight`
 - `profiles.dark.meaning` / `profiles.light.meaning`
 - `profiles.dark.pos` / `profiles.light.pos`
+- `profiles.dark.prompt_border` / `profiles.light.prompt_border`
+- `profiles.dark.prompt_marker` / `profiles.light.prompt_marker`
+- `profiles.dark.prompt_transient` / `profiles.light.prompt_transient`
 
 Style fields support:
 
@@ -86,12 +90,18 @@ Example:
     "dark": {
       "highlight": {"fg": "#ff5fd7", "bold": true, "underline": true},
       "meaning": {"fg": "#66ffff", "bold": true},
-      "pos": {"fg": "#101010", "bg": "#ffe082", "bold": true}
+      "pos": {"fg": "#101010", "bg": "#ffe082", "bold": true},
+      "prompt_border": {"fg": "#94a3b8"},
+      "prompt_marker": {"fg": "#38bdf8", "bold": true},
+      "prompt_transient": {"fg": "#22c55e", "bold": true}
     },
     "light": {
       "highlight": {"fg": "#8a005c", "bold": true, "underline": true},
       "meaning": {"fg": "#005a9c", "bold": true},
-      "pos": {"fg": "#000000", "bg": "#ffd54f", "bold": true}
+      "pos": {"fg": "#000000", "bg": "#ffd54f", "bold": true},
+      "prompt_border": {"fg": "#64748b"},
+      "prompt_marker": {"fg": "#0284c7", "bold": true},
+      "prompt_transient": {"fg": "#15803d", "bold": true}
     }
   }
 }
