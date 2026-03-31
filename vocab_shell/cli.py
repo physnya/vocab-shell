@@ -21,6 +21,7 @@ try:
     from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
     from prompt_toolkit.completion import Completer, Completion, WordCompleter
     from prompt_toolkit.document import Document
+    from prompt_toolkit.formatted_text import ANSI
     from prompt_toolkit.history import FileHistory
     from prompt_toolkit.shortcuts import CompleteStyle
 
@@ -196,22 +197,15 @@ class VocabShell:
 
         left_border = "╰─"
         marker = "❯ "
-        bottom_suffix = "─╯"
-        bottom_fill = max(width - len(left_border) - len(marker) - len(bottom_suffix), 8)
 
         border_color = self.theme["prompt_border_start"]
         marker_color = self.theme["prompt_marker_start"]
         color_end = self.theme["color_end"]
         bottom_prefix_colored = f"{border_color}{left_border}{color_end}{marker_color}{marker}{color_end}"
         top_line_colored = f"{border_color}{top_line}{color_end}"
-        bottom_line_colored = (
-            f"{border_color}{left_border}{color_end}"
-            f"{marker_color}{marker}{color_end}"
-            f"{border_color}{' ' * bottom_fill}{bottom_suffix}{color_end}"
-        )
 
-        # Draw a full bordered line, then move to the start of that line for typing.
-        return f"{top_line_colored}\n{bottom_line_colored}\r{bottom_prefix_colored}"
+        # Keep prompt_toolkit prompt text simple (no carriage-return tricks).
+        return f"{top_line_colored}\n{bottom_prefix_colored}"
 
     def _render_transient_prompt(self, command: str) -> None:
         if not (sys.stdin.isatty() and sys.stdout.isatty()):
@@ -548,7 +542,7 @@ class VocabShell:
     def _prompt(self, message: str) -> str:
         if self.prompt_session is None:
             return input(message)
-        return self.prompt_session.prompt(message)
+        return self.prompt_session.prompt(ANSI(message))
 
     def _load_search_history(self) -> list[str]:
         if not self.search_history_path.exists():
