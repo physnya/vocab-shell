@@ -1,3 +1,6 @@
+> [!WARNING]
+> This repo is 90% written by GPT-5.3-codex, and is just an incomplete tool for personal use.
+
 # Vocab Shell
 
 Terminal vocabulary trainer for TOEFL preparation.
