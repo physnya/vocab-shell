@@ -39,6 +39,12 @@ class ReviewTests(unittest.TestCase):
         due = manager.due_words("toefl")
         self.assertEqual(len(due), 4)
 
+    def test_new_word_default_review_time_is_at_least_one_day(self) -> None:
+        now = datetime.now(UTC)
+        state = ReviewState()
+        next_review_at = datetime.fromisoformat(state.next_review_at)
+        self.assertGreaterEqual(next_review_at - now, timedelta(hours=23, minutes=59))
+
 
 if __name__ == "__main__":
     unittest.main()

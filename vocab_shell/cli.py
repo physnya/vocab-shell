@@ -85,15 +85,33 @@ class VocabShell:
         entry = client.search(word)
         print(f"Word: {entry.word}")
         print(f"Dictionary: {entry.dictionary_code}")
-        print("Definitions:")
+        grouped_examples = entry.meaning_examples
+        if len(grouped_examples) != len(entry.definitions):
+            grouped_examples = self._attach_examples_to_definitions(entry.definitions, entry.examples)
         for idx, definition in enumerate(entry.definitions, start=1):
             print(f"  {idx}. {definition}")
-        if entry.examples:
-            print("Examples:")
-            for idx, example in enumerate(entry.examples, start=1):
-                print(f"  {idx}. {example}")
+            if grouped_examples[idx - 1]:
+                print("     Examples:")
+                for ex_idx, example in enumerate(grouped_examples[idx - 1], start=1):
+                    print(f"       {ex_idx}) {example}")
         print()
         self.offer_to_save(entry)
+
+    @staticmethod
+    def _attach_examples_to_definitions(
+        definitions: list[str], examples: list[str]
+    ) -> list[list[str]]:
+        groups = [[] for _ in definitions]
+        if not definitions or not examples:
+            return groups
+
+        seed_count = min(len(definitions), len(examples))
+        for idx in range(seed_count):
+            groups[idx].append(examples[idx])
+
+        for idx in range(seed_count, len(examples)):
+            groups[idx % len(definitions)].append(examples[idx])
+        return groups
 
     def offer_to_save(self, entry) -> None:
         dictionaries = self.storage.list_dictionaries()

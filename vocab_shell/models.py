@@ -1,18 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 
 DEFAULT_REVIEW_INTERVALS = [
-    5 * 60,
-    30 * 60,
-    12 * 60 * 60,
     24 * 60 * 60,
     2 * 24 * 60 * 60,
     4 * 24 * 60 * 60,
     7 * 24 * 60 * 60,
     15 * 24 * 60 * 60,
+    30 * 24 * 60 * 60,
+    45 * 24 * 60 * 60,
+    60 * 24 * 60 * 60,
 ]
 
 
@@ -22,6 +22,7 @@ class SearchEntry:
     dictionary_code: str
     definitions: list[str]
     examples: list[str]
+    meaning_examples: list[list[str]] = field(default_factory=list)
     raw_entry_id: str | None = None
     raw_entry_url: str | None = None
 
@@ -37,7 +38,11 @@ class ReviewHistoryItem:
 @dataclass
 class ReviewState:
     stage_index: int = 0
-    next_review_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    next_review_at: str = field(
+        default_factory=lambda: (
+            datetime.now(UTC) + timedelta(seconds=DEFAULT_REVIEW_INTERVALS[0])
+        ).isoformat()
+    )
     last_reviewed_at: str | None = None
     history: list[ReviewHistoryItem] = field(default_factory=list)
 
