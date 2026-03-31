@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import os
+import re
 import shlex
 from datetime import UTC, datetime
 from pathlib import Path
@@ -11,15 +14,38 @@ from vocab_shell.storage import Storage, StorageError
 
 
 class VocabShell:
-    def __init__(self) -> None:
-        import os
+    DEFAULT_THEME = {
+        "highlight_start": "\033[1;4;35m",
+        "highlight_end": "\033[0m",
+        "meaning_start": "\033[1;96m",
+        "pos_start": "\033[1;7m",
+        "color_end": "\033[0m",
+    }
+    DEFAULT_THEME_CONFIG = {
+        "active_profile": "auto",
+        "profiles": {
+            "dark": {
+                "highlight": {"fg": "#ff5fd7", "bold": True, "underline": True},
+                "meaning": {"fg": "#66ffff", "bold": True},
+                "pos": {"fg": "#101010", "bg": "#ffe082", "bold": True},
+            },
+            "light": {
+                "highlight": {"fg": "#8a005c", "bold": True, "underline": True},
+                "meaning": {"fg": "#005a9c", "bold": True},
+                "pos": {"fg": "#000000", "bg": "#ffd54f", "bold": True},
+            },
+        },
+    }
 
+    def __init__(self) -> None:
         custom_home = os.getenv("VOCAB_SHELL_HOME")
         if custom_home:
             home = Path(custom_home).expanduser()
         else:
             home = Path.cwd() / ".vocab-shell"
         self.storage = Storage(home)
+        self.theme_path = self.storage.home / "theme.json"
+        self.theme = self._load_color_theme(self.theme_path)
         self.review_manager = ReviewManager(self.storage)
 
     def run(self) -> int:
@@ -83,19 +109,174 @@ class VocabShell:
     def search_word(self, word: str) -> None:
         client = CollinsClient()
         entry = client.search(word)
-        print(f"Word: {entry.word}")
+        query = word.strip()
+        print(f"Word: {self._highlight_exact_word(query, query)}")
         print(f"Dictionary: {entry.dictionary_code}")
         grouped_examples = entry.meaning_examples
         if len(grouped_examples) != len(entry.definitions):
             grouped_examples = self._attach_examples_to_definitions(entry.definitions, entry.examples)
         for idx, definition in enumerate(entry.definitions, start=1):
-            print(f"  {idx}. {definition}")
+            print(f"  {idx}. {self._colorize_meaning(definition)}")
             if grouped_examples[idx - 1]:
                 print("     Examples:")
                 for ex_idx, example in enumerate(grouped_examples[idx - 1], start=1):
-                    print(f"       {ex_idx}) {example}")
+                    formatted = self._format_example_line(example, query)
+                    print(f"       {ex_idx}) {formatted}")
         print()
         self.offer_to_save(entry)
+
+    def _highlight_exact_word(self, text: str, word: str) -> str:
+        needle = word.strip()
+        if not needle:
+            return text
+        pattern = re.compile(rf"\b({re.escape(needle)})\b", flags=re.IGNORECASE)
+        return pattern.sub(
+            rf"{self.theme['highlight_start']}\1{self.theme['highlight_end']}",
+            text,
+        )
+
+    def _colorize_meaning(self, text: str) -> str:
+        return f"{self.theme['meaning_start']}{text}{self.theme['color_end']}"
+
+    def _format_example_line(self, text: str, query: str) -> str:
+        match = re.match(r"^(\[[^\]]+\])\s*(.*)$", text.strip())
+        if match:
+            pos, body = match.groups()
+            body = self._highlight_exact_word(body, query)
+            return f"{self.theme['pos_start']}{pos}{self.theme['color_end']} {body}".rstrip()
+        return self._highlight_exact_word(text, query)
+
+    @classmethod
+    def _load_color_theme(cls, path: Path) -> dict[str, str]:
+        theme = dict(cls.DEFAULT_THEME)
+        if not path.exists():
+            cls._write_theme(path, cls.DEFAULT_THEME_CONFIG)
+            return cls._resolve_theme_from_config(cls.DEFAULT_THEME_CONFIG)
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            cls._write_theme(path, cls.DEFAULT_THEME_CONFIG)
+            return cls._resolve_theme_from_config(cls.DEFAULT_THEME_CONFIG)
+
+        if cls._is_flat_theme(payload):
+            for key, value in payload.items():
+                if key in theme and isinstance(value, str):
+                    theme[key] = value
+            return theme
+
+        config = cls._normalize_theme_config(payload)
+        if payload != config:
+            cls._write_theme(path, config)
+        return cls._resolve_theme_from_config(config)
+
+    @staticmethod
+    def _write_theme(path: Path, payload: dict) -> None:
+        try:
+            path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        except OSError:
+            pass
+
+    @staticmethod
+    def _is_flat_theme(payload: object) -> bool:
+        if not isinstance(payload, dict):
+            return False
+        return any(key.endswith("_start") or key.endswith("_end") for key in payload.keys())
+
+    @classmethod
+    def _normalize_theme_config(cls, payload: object) -> dict:
+        config = json.loads(json.dumps(cls.DEFAULT_THEME_CONFIG))
+        if not isinstance(payload, dict):
+            return config
+
+        active = payload.get("active_profile")
+        if isinstance(active, str) and active in {"auto", "dark", "light"}:
+            config["active_profile"] = active
+
+        profiles = payload.get("profiles")
+        if not isinstance(profiles, dict):
+            return config
+
+        for profile_name in ("dark", "light"):
+            raw_profile = profiles.get(profile_name)
+            if not isinstance(raw_profile, dict):
+                continue
+            for key in ("highlight", "meaning", "pos"):
+                raw_style = raw_profile.get(key)
+                if isinstance(raw_style, (dict, str)):
+                    config["profiles"][profile_name][key] = raw_style
+        return config
+
+    @classmethod
+    def _resolve_theme_from_config(cls, config: dict) -> dict[str, str]:
+        profile_name = config.get("active_profile", "auto")
+        if profile_name == "auto":
+            profile_name = cls._detect_terminal_profile()
+        if profile_name not in {"dark", "light"}:
+            profile_name = "dark"
+
+        profile = config.get("profiles", {}).get(profile_name, {})
+        theme = dict(cls.DEFAULT_THEME)
+        highlight = cls._style_to_escape(profile.get("highlight"))
+        meaning = cls._style_to_escape(profile.get("meaning"))
+        pos = cls._style_to_escape(profile.get("pos"))
+        if highlight:
+            theme["highlight_start"] = highlight
+        if meaning:
+            theme["meaning_start"] = meaning
+        if pos:
+            theme["pos_start"] = pos
+        return theme
+
+    @staticmethod
+    def _detect_terminal_profile() -> str:
+        colorfgbg = os.getenv("COLORFGBG", "")
+        tokens = re.findall(r"\d+", colorfgbg)
+        if not tokens:
+            return "dark"
+        background = int(tokens[-1])
+        return "light" if background >= 7 else "dark"
+
+    @classmethod
+    def _style_to_escape(cls, style: object) -> str | None:
+        if isinstance(style, str):
+            if style.startswith("\033["):
+                return style
+            return None
+        if not isinstance(style, dict):
+            return None
+
+        codes: list[str] = []
+        if style.get("bold"):
+            codes.append("1")
+        if style.get("underline"):
+            codes.append("4")
+        if style.get("reverse"):
+            codes.append("7")
+
+        fg = cls._parse_rgb_triplet(style.get("fg"))
+        if fg:
+            codes.append(f"38;2;{fg[0]};{fg[1]};{fg[2]}")
+        bg = cls._parse_rgb_triplet(style.get("bg"))
+        if bg:
+            codes.append(f"48;2;{bg[0]};{bg[1]};{bg[2]}")
+
+        if not codes:
+            return None
+        return f"\033[{';'.join(codes)}m"
+
+    @staticmethod
+    def _parse_rgb_triplet(value: object) -> tuple[int, int, int] | None:
+        if isinstance(value, str):
+            match = re.fullmatch(r"#?([0-9a-fA-F]{6})", value.strip())
+            if not match:
+                return None
+            hex_code = match.group(1)
+            return tuple(int(hex_code[idx : idx + 2], 16) for idx in (0, 2, 4))
+        if isinstance(value, list) and len(value) == 3 and all(isinstance(item, int) for item in value):
+            r, g, b = value
+            if 0 <= r <= 255 and 0 <= g <= 255 and 0 <= b <= 255:
+                return (r, g, b)
+        return None
 
     @staticmethod
     def _attach_examples_to_definitions(

@@ -1,4 +1,4 @@
 .tmp-data/
-.vocab-shell/
+.vocab-shell/dictionaries/
 __pycache__/
 *.pyc

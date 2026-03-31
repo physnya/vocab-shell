@@ -59,7 +59,43 @@ This is a configurable Ebbinghaus-style schedule stored per word in local JSON.
 Data is stored in `VOCAB_SHELL_HOME`:
 
 - `config.json`: global configuration
+- `theme.json`: color theme config for output styling (supports `dark`/`light` profiles and RGB colors)
 - `dictionaries/<name>.json`: one file per custom dictionary, including review state per word
+
+Default `theme.json` structure:
+
+- `active_profile`: `auto` | `dark` | `light`
+- `profiles.dark.highlight` / `profiles.light.highlight`
+- `profiles.dark.meaning` / `profiles.light.meaning`
+- `profiles.dark.pos` / `profiles.light.pos`
+
+Style fields support:
+
+- `fg`: RGB color like `#66ffff`
+- `bg`: RGB color like `#101010`
+- `bold`: `true` / `false`
+- `underline`: `true` / `false`
+- `reverse`: `true` / `false`
+
+Example:
+
+```json
+{
+  "active_profile": "auto",
+  "profiles": {
+    "dark": {
+      "highlight": {"fg": "#ff5fd7", "bold": true, "underline": true},
+      "meaning": {"fg": "#66ffff", "bold": true},
+      "pos": {"fg": "#101010", "bg": "#ffe082", "bold": true}
+    },
+    "light": {
+      "highlight": {"fg": "#8a005c", "bold": true, "underline": true},
+      "meaning": {"fg": "#005a9c", "bold": true},
+      "pos": {"fg": "#000000", "bg": "#ffd54f", "bold": true}
+    }
+  }
+}
+```
 
 ## Notes
 
