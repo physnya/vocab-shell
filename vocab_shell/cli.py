@@ -346,7 +346,11 @@ class VocabShell:
             if not match:
                 return None
             hex_code = match.group(1)
-            return tuple(int(hex_code[idx : idx + 2], 16) for idx in (0, 2, 4))
+            return (
+                int(hex_code[0:2], 16),
+                int(hex_code[2:4], 16),
+                int(hex_code[4:6], 16),
+            )
         if isinstance(value, list) and len(value) == 3 and all(isinstance(item, int) for item in value):
             r, g, b = value
             if 0 <= r <= 255 and 0 <= g <= 255 and 0 <= b <= 255:
